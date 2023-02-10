@@ -7,7 +7,12 @@ import torch.nn as nn
 
 
 # architecture ('M' is the max pooling)
-VGG16_layers = [64, 64, 'M', 128, 128, 'M', 256, 256, 256, 'M', 512, 512, 512, 'M', 512, 512, 512, 'M']
+VGG_types = {
+    'VGG11': [64, 'M', 128, 'M', 256, 256, 'M', 512, 512, 'M', 512, 512, 'M'],
+    'VGG13': [64, 64, 'M', 128, 128, 'M', 256, 256, 'M', 512, 512, 'M', 512, 512, 'M'],
+    'VGG16': [64, 64, 'M', 128, 128, 'M', 256, 256, 256, 'M', 512, 512, 512, 'M', 512, 512, 512, 'M'],
+    'VGG19': [64, 64, 'M', 128, 128, 'M', 256, 256, 256, 256, 'M', 512, 512, 512, 512, 'M', 512, 512, 512, 512, 'M']
+}
 # then flatten and 4096 x 4096 x 1000 linear layers
 
 class VGG(nn.Module):
@@ -15,7 +20,7 @@ class VGG(nn.Module):
         super().__init__()
 
         self.in_channels = in_channels
-        self.conv_layers = self.create_conv_layers(VGG16_layers)
+        self.conv_layers = self.create_conv_layers(VGG_types['VGG16'])
         self.fc = nn.Sequential(
             nn.Linear(512 * 7 * 7, 4096),
             nn.ReLU(),
