@@ -58,8 +58,8 @@ device = "cuda" if torch.cuda.is_available() else "cpu"
 lr = 3e-4
 z_dim = 64  # 128, 256
 image_dim = 28 * 28 * 1
-batch_size = 32
-num_epochs = 50
+batch_size = 64
+num_epochs = 100
 
 disc = Discriminator(image_dim).to(device)
 gen = Generator(z_dim, image_dim).to(device)
@@ -69,6 +69,7 @@ transforms = transforms.Compose(
      transforms.Normalize((0.5,), (0.5,))]
 )
 dataset = datasets.MNIST(root="dataset/", transform=transforms, download=True)
+print("dataset length:", len(dataset))
 loader = DataLoader(dataset, batch_size=batch_size, shuffle=True)
 optimizer_disc = optim.Adam(disc.parameters(), lr=lr)
 optimizer_gen = optim.Adam(gen.parameters(), lr=lr)
