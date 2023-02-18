@@ -8,6 +8,9 @@ neural_style_transfer/output/*/*0.png
 # GANs/SimpleGAN
 GANs/SimpleGAN/dataset/
 
+# GANs/DCGAN
+GANs/DCGAN/dataset
+
 
 
 
