@@ -1,6 +1,7 @@
 """
 Training of DCGAN network on MNIST dataset with Discriminator and
 Generator imported from models.py
+CelebA dataset: https://www.kaggle.com/datasets/504743cb487a5aed565ce14238c6343b7d650ffd28c071f03f2fd9b25819e6c9
 """
 
 import torch
@@ -20,9 +21,10 @@ device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 LEARNING_RATE = 2e-4
 BATCH_SIZE = 128
 IMAGE_SIZE = 64
-IMAGE_CHANNELS = 1
+# IMAGE_CHANNELS = 1
+IMAGE_CHANNELS = 3
 Z_DIM = 100
-NUM_EPOCHS = 5
+NUM_EPOCHS = 30
 FEATURES_DISC = 64
 FEATURES_GEN = 64
 
@@ -36,7 +38,8 @@ transforms = transforms.Compose(
     ]
 )
 
-dataset = datasets.MNIST(root="dataset/", train=True, transform=transforms, download=True)
+# dataset = datasets.MNIST(root="dataset/", train=True, transform=transforms, download=True)
+dataset = datasets.ImageFolder(root="dataset/celeb_dataset", transform=transforms)
 loader = DataLoader(dataset, batch_size=BATCH_SIZE, shuffle=True)
 gen = Generator(Z_DIM, IMAGE_CHANNELS, FEATURES_GEN).to(device)
 disc = Discriminator(IMAGE_CHANNELS, FEATURES_DISC).to(device)
@@ -48,8 +51,10 @@ optimizer_disc = optim.Adam(disc.parameters(), lr=LEARNING_RATE, betas=(0.5, 0.9
 criterion = nn.BCELoss()
 
 fixed_noise = torch.randn(32, Z_DIM, 1, 1).to(device)
-writer_real = SummaryWriter("logs/real")
-writer_fake = SummaryWriter("logs/fake")
+# writer_real = SummaryWriter("logs/MNIST/real")
+# writer_fake = SummaryWriter("logs/MNIST/fake")
+writer_real = SummaryWriter("logs/celeb/real")
+writer_fake = SummaryWriter("logs/celeb/fake")
 step = 0
 
 gen.train()
@@ -79,7 +84,8 @@ for epoch in range(NUM_EPOCHS):
         optimizer_gen.step()
 
         # tensorboard
-        if batch_idx % 100 == 0:
+        # if batch_idx % 100 == 0:
+        if batch_idx % 500 == 0:
             print(
                 f"Epoch [{epoch}/{NUM_EPOCHS}], Batch: {batch_idx}/{len(loader)} \
                     Loss D: {loss_disc:.4f}, Loss G: {loss_gen:.4f}"
