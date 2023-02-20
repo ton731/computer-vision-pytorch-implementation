@@ -24,7 +24,7 @@ IMAGE_SIZE = 64
 # IMAGE_CHANNELS = 1
 IMAGE_CHANNELS = 3
 Z_DIM = 100
-NUM_EPOCHS = 30
+NUM_EPOCHS = 5
 FEATURES_DISC = 64
 FEATURES_GEN = 64
 CRITIC_ITERATIONS = 5
@@ -41,9 +41,9 @@ transforms = transforms.Compose(
 )
 
 # if train MNIST, need to change the img_channel to 1.
-# dataset = datasets.MNIST(root="dataset/", train=True, transform=transforms, download=True)
+# dataset = datasets.MNIST(root="../dataset/", train=True, transform=transforms, download=True)
 
-dataset = datasets.ImageFolder(root="dataset/celeb_dataset", transform=transforms)
+dataset = datasets.ImageFolder(root="../dataset/celeb_dataset", transform=transforms)
 loader = DataLoader(dataset, batch_size=BATCH_SIZE, shuffle=True)
 gen = Generator(Z_DIM, IMAGE_CHANNELS, FEATURES_GEN).to(device)
 critic = Discriminator(IMAGE_CHANNELS, FEATURES_DISC).to(device)
@@ -89,7 +89,7 @@ for epoch in range(NUM_EPOCHS):
         optimizer_gen.step()
 
         # tensorboard
-        if batch_idx % 500 == 0:
+        if batch_idx % 200 == 0:
             print(
                 f"Epoch [{epoch}/{NUM_EPOCHS}], Batch: {batch_idx}/{len(loader)} \
                     Loss D: {loss_critic:.4f}, Loss G: {loss_gen:.4f}"

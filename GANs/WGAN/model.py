@@ -1,5 +1,5 @@
 """
-Discriminator and Generator implementation from DCGAN paper
+Discriminator and Generator implementation from DCGAN and WGAN paper
 reference: https://youtu.be/pG0QZ7OddX4
 """
 
@@ -21,7 +21,6 @@ class Discriminator(nn.Module):
             self._block(features_d*2, features_d*4, 4, 2, 1),   # 8x8
             self._block(features_d*4, features_d*8, 4, 2, 1),   # 4x4
             nn.Conv2d(features_d*8, 1, kernel_size=4, stride=2, padding=0),  # 1x1
-            nn.Sigmoid()
         )
 
 

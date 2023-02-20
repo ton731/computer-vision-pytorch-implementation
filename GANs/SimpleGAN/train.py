@@ -68,7 +68,7 @@ transforms = transforms.Compose(
     [transforms.ToTensor(),
      transforms.Normalize((0.5,), (0.5,))]
 )
-dataset = datasets.MNIST(root="dataset/", transform=transforms, download=True)
+dataset = datasets.MNIST(root="../dataset/", transform=transforms, download=True)
 print("dataset length:", len(dataset))
 loader = DataLoader(dataset, batch_size=batch_size, shuffle=True)
 optimizer_disc = optim.Adam(disc.parameters(), lr=lr)
