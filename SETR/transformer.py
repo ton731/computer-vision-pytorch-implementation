@@ -3,7 +3,7 @@ import torch.nn as nn
 
 
 class SelfAttention(nn.Module):
-    def __init__(self, embed_size, heads):
+    def __init__(self, embed_size, heads, attn_dropout_rate):
         super().__init__()
 
         self.embed_size = embed_size
@@ -16,17 +16,18 @@ class SelfAttention(nn.Module):
         self.keys = nn.Linear(embed_size, embed_size)
         self.queries = nn.Linear(embed_size, embed_size)
         self.fc_out = nn.Linear(self.head_dim * heads, embed_size)  # head_dim * heads = embed_size
+        self.dropout = nn.Dropout(attn_dropout_rate)
 
-    def forward(self, v, k, q, mask):
-        # Get number of training examples, q: [N, q_len, embed_size]
-        N = q.shape[0]
+    def forward(self, x):
+        # Get number of training examples, x: [N, q_len, embed_size]
+        N, seq_len, _ = x.shape
 
         # Get the sequence lens, k_len should be equal to v_len
-        v_len, k_len, q_len = v.shape[1], k.shape[1], q.shape[1]
+        v_len, k_len, q_len = seq_len, seq_len, seq_len
 
-        v = self.values(v)  # [N, v_len, embed_size]
-        k = self.keys(k)    # [N, k_len, embed_size]
-        q = self.queries(q) # [N, q_len, embed_size]
+        v = self.values(x)  # [N, v_len, embed_size]
+        k = self.keys(x)    # [N, k_len, embed_size]
+        q = self.queries(x) # [N, q_len, embed_size]
 
         # Split the embedding into self.heads different pieces
         v = v.reshape(N, v_len, self.heads, self.head_dim)
@@ -39,10 +40,6 @@ class SelfAttention(nn.Module):
         # k shape: [N, k_len, heads, head_dim]
         # energy: [N, heads, q_len, k_len]
         energy = torch.einsum("nqhd,nkhd->nhqk", [q, k])
-
-        # Mask padded indicies so their weights become 0
-        if mask is not None:
-            energy = energy.masked_fill(mask == 0, float("-1e20"))
 
         # Normalize energy values so it becomes attention weights in the
         # k_len dimension, so k_len dim sums equals to 1. Also divide by
@@ -62,193 +59,97 @@ class SelfAttention(nn.Module):
 
         # Final output shape: [N, q, embed_size]
         out = self.fc_out(out)
+        out = self.dropout(out)
 
         return out
 
 
 
 class TransformerBlock(nn.Module):
-    def __init__(self, embed_size, heads, dropout, forward_expansion):
+    def __init__(
+            self,
+            embed_size, 
+            heads,
+            dropout_rate,
+            attn_dropout_rate,
+            forward_expansion
+    ):
         super().__init__()
         
-        self.self_attention = SelfAttention(embed_size, heads)
         self.norm1 = nn.LayerNorm(embed_size)
+        self.self_attention = SelfAttention(embed_size, heads, attn_dropout_rate)
         self.norm2 = nn.LayerNorm(embed_size)
 
         self.feed_forward = nn.Sequential(
             nn.Linear(embed_size, forward_expansion * embed_size),
             nn.ReLU(),
-            nn.Linear(forward_expansion * embed_size, embed_size)
+            nn.Dropout(dropout_rate),
+            nn.Linear(forward_expansion * embed_size, embed_size),
+            nn.Dropout(dropout_rate)
         )
-        self.dropout = nn.Dropout(dropout)
 
-    def forward(self, value, key, query, mask):
-        attention = self.self_attention(value, key, query, mask)
-        x = self.dropout(self.norm1(attention + query))
-
-        forward = self.feed_forward(x)
-        out = self.dropout(self.norm2(forward + x))
+    def forward(self, x):
+        # Layer Norm --> Self Attention --> Layer Norm --> MLP
+        attention = self.self_attention(self.norm1(x))
+        x = attention + x
+        out = self.feed_forward(self.norm2(x))
+        out = out + x
         return out
 
 
 
-class Encoder(nn.Module):
+class TransformerEncoder(nn.Module):
     def __init__(
         self,
-        src_vocab_size,
         embed_size,
         num_layers,
         heads,
-        device,
-        forward_expansion,
-        dropout,
-        max_length,
-    ):
-        super().__init__()
-
-        self.device = device
-        self.word_embedding = nn.Embedding(src_vocab_size, embed_size)
-        self.position_embedding = nn.Embedding(max_length, embed_size)
-
-        self.layers = nn.ModuleList(
-            [TransformerBlock(embed_size, heads, dropout, forward_expansion) for _ in range(num_layers)]
-        )
-
-        self.dropout = nn.Dropout(dropout)
-
-    def forward(self, x, mask):
-        N, seq_length = x.shape
-        positions = torch.arange(seq_length).expand(N, seq_length).to(self.device)
-        out = self.dropout(
-            self.word_embedding(x) + self.position_embedding(positions)
-        )
-
-        # In the Encoder, the value, key, and query are all the same, but it'll change in the Decoder.
-        for layer in self.layers:
-            out = layer(out, out, out, mask)
-
-        return out
-
-
-
-class DecoderBlock(nn.Module):
-    def __init__(self, embed_size, heads, forward_expansion, dropout):
-        super().__init__()
-
-        self.self_attention = SelfAttention(embed_size, heads)
-        self.norm = nn.LayerNorm(embed_size)
-        self.transformer_block = TransformerBlock(embed_size, heads, dropout, forward_expansion)
-        self.dropout = nn.Dropout(dropout)
-
-    def forward(self, x, value, key, src_mask, tgt_mask):
-        # src_mask is for not computing th gradients of the padded parts in the sequence
-        # tgt_mask is for the masking the right-side inputs in the decoder
-        attention = self.self_attention(x, x, x, tgt_mask)
-        query = self.dropout(self.norm(attention + x))
-        out = self.transformer_block(value, key, query, src_mask)
-        return out
-
-
-
-class Decoder(nn.Module):
-    def __init__(
-        self,
-        tgt_vocab_size,
-        embed_size,
-        num_layers,
-        heads,
-        forward_expansion,
-        dropout,
-        device,
-        max_length,
-    ):
-        super().__init__()
-
-        self.device = device
-        self.word_embedding = nn.Embedding(tgt_vocab_size, embed_size)
-        self.position_embedding = nn.Embedding(max_length, embed_size)
-
-        self.layers = nn.ModuleList(
-            [DecoderBlock(embed_size, heads, forward_expansion, dropout) for _ in range(num_layers)]
-        )
-
-        self.fc_out = nn.Linear(embed_size, tgt_vocab_size)
-        self.dropout = nn.Dropout(dropout)
-
-    def forward(self, x, enc_out, src_mask, tgt_mask):
-        N, seq_length = x.shape
-        positions = torch.arange(seq_length).expand(N, seq_length).to(self.device)
-        x = self.dropout(self.word_embedding(x) + self.position_embedding(positions))
-
-        for layer in self.layers:
-            x = layer(x, enc_out, enc_out, src_mask, tgt_mask)
-        
-        out = self.fc_out(x)
-
-        return out
-
-
-
-class Transformer(nn.Module):
-    def __init__(
-        self,
-        src_vocab_size,
-        tgt_vocab_size,
-        src_pad_idx,
-        tgt_pad_idx,
-        embed_size=256,
-        num_layers=6,
+        dropout_rate=0.1,
+        attn_dropout_rate=0.1,
         forward_expansion=4,
-        heads=8,
-        dropout=0,
-        device="cpu",
-        max_length=100,
     ):
         super().__init__()
 
-        self.encoder = Encoder(
-            src_vocab_size,
-            embed_size,
-            num_layers,
-            heads,
-            device,
-            forward_expansion,
-            dropout,
-            max_length
+        self.layers = nn.ModuleList(
+            [TransformerBlock(
+                embed_size=embed_size,
+                heads=heads,
+                dropout_rate=dropout_rate,
+                attn_dropout_rate=attn_dropout_rate,
+                forward_expansion=forward_expansion
+            ) for _ in range(num_layers)]
         )
 
-        self.decoder = Decoder(
-            tgt_vocab_size,
-            embed_size,
-            num_layers,
-            heads,
-            forward_expansion,
-            dropout,
-            device,
-            max_length
-        )
-
-        self.src_pad_idx = src_pad_idx
-        self.tgt_pad_idx = tgt_pad_idx
-        self.device = device
-
-    def make_src_mask(self, src):
-        # [N, 1, 1, src_len]
-        src_mask = (src != self.src_pad_idx).unsqueeze(1).unsqueeze(2)
-        return src_mask.to(self.device)
-
-    def make_tgt_mask(self, tgt):
-        N, tgt_len = tgt.shape
-        tgt_mask = torch.tril(torch.ones((tgt_len, tgt_len))).expand(
-            N, 1, tgt_len, tgt_len
-        )
-        return tgt_mask.to(self.device)
-
-    def forward(self, src, tgt):
-        src_mask = self.make_src_mask(src)
-        tgt_mask = self.make_tgt_mask(tgt)
-        enc_out = self.encoder(src, src_mask)
-        out = self.decoder(tgt, enc_out, src_mask, tgt_mask)
-        return out
+    def forward(self, x, return_intermediate=True):
+        intermiediate_outputs = []
+        for layer in self.layers:
+            x = layer(x)
+            intermiediate_outputs.append(x)
+        return x, intermiediate_outputs if return_intermediate else x
+    
 
 
+
+
+
+if __name__ == "__main__":
+
+    N = 8
+    seq_len = 256
+    embedding_dim = 256
+    input_sequence = torch.randn((N, seq_len, embedding_dim))
+
+    model = TransformerEncoder(
+        embed_size=embedding_dim,
+        num_layers=8,
+        heads=8,
+        dropout_rate=0.1,
+        attn_dropout_rate=0.1,
+        forward_expansion=4
+    )
+    print("model:")
+    print(model)
+    
+    out = model(input_sequence)
+    assert out.shape == torch.Size([N, seq_len, embedding_dim])
+    print(out.shape)

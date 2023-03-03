@@ -44,3 +44,17 @@ class LearnedPositionalEncoding(nn.Module):
         return x + position_embeddings
 
 
+
+if __name__ == "__main__":
+    N = 5
+    seq_len = 48
+    embedding_dim = 128
+    img = torch.randn((N, seq_len, embedding_dim))
+
+    # position_encoding = FixedPositionalEncoding(seq_len, embedding_dim)
+    position_encoding = LearnedPositionalEncoding(seq_len, embedding_dim)
+
+    out = position_encoding(img)
+    assert out.shape == torch.Size([N, seq_len, embedding_dim])
+    print("input shape:", img.shape)
+    print("output shape:", out.shape)
