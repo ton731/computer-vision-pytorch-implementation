@@ -85,6 +85,9 @@ class SETR(nn.Module):
             self.transformer_forward_expansion
         )
 
+        # The last layer norm after the encoder
+        self.encoder_last_norm = nn.LayerNorm(self.embedding_dim)
+
 
     def _init_decoder(self):
         raise NotImplementedError("Decoder should be implemented in child class!")
@@ -119,6 +122,7 @@ class SETR(nn.Module):
 
         # transformer
         x, intmd_x = self.transformer(x, return_intermediate=True)
+        x = self.encoder_last_norm(x)
 
         return x, intmd_x
 
@@ -127,17 +131,17 @@ class SETR(nn.Module):
         raise NotImplementedError("Decode function should be implemented in child class!")
     
 
-    def forward(self, x, auxillary_output_layers=None):
+    def forward(self, x, intmd_layers=None):
         encoder_output, intmd_encoder_outputs = self.encode(x)
         decoder_output = self.decode(
-            encoder_output, intmd_encoder_outputs, auxillary_output_layers
+            encoder_output, intmd_encoder_outputs, intmd_layers
         )
 
-        if auxillary_output_layers is not None:
-            auxillary_outputs = {}
-            for i in auxillary_output_layers:
-                auxillary_outputs[i] = intmd_encoder_outputs[i]
-            return decoder_output, auxillary_outputs
+        # if auxillary_output_layers is not None:
+        #     auxillary_outputs = {}
+        #     for i in auxillary_output_layers:
+        #         auxillary_outputs[i] = intmd_encoder_outputs[i]
+        #     return decoder_output, auxillary_outputs
         
         return decoder_output
 
@@ -150,7 +154,7 @@ class SETR(nn.Module):
         return tuple(0 for _ in kernel_size)
     
 
-    def _reshape_output(self, x):
+    def _reshape_output_seq2img(self, x):
         # Reshape the sequence back to a 2d image.
         # x: [N, seq_len(patch_num), embedding_dim]
         # img: [N, embedding_dim, height_patch_num, width_patch_num]
@@ -226,10 +230,195 @@ class SETR_Naive(SETR):
 
 
     def decode(self, x, intmd_x, intmd_layers=None):
-        x = self._reshape_output(x)
+        x = self._reshape_output_seq2img(x)
         x = self.img_project(x)
         x = self.upsample(x)
         return x
+    
+
+
+
+
+class SETR_PUP(SETR):
+    def __init__(
+        self,
+        img_size,
+        patch_size,
+        num_channels,
+        num_classes,
+        embedding_dim,
+        num_heads,
+        num_layers,
+        transformer_foward_expansion,
+        dropout_rate=0.0,
+        attn_dropout_rate=0.0,
+        conv_patch_representation=False,
+        positional_encoding_type="learned",
+    ):
+        super().__init__(
+            img_size=img_size,
+            patch_size=patch_size,
+            num_channels=num_channels,
+            embedding_dim=embedding_dim,
+            num_heads=num_heads,
+            num_layers=num_layers,
+            transformer_forward_expansion=transformer_foward_expansion,
+            dropout_rate=dropout_rate,
+            attn_dropout_rate=attn_dropout_rate,
+            conv_patch_representation=conv_patch_representation,
+            positional_encoding_type=positional_encoding_type
+        )
+
+        self.num_classes = num_classes
+        self._init_decoder()
+
+    
+    def _init_decoder(self):
+        # Progressive upscaling decoder
+        extra_in_channels = int(self.embedding_dim / 4)
+        in_channels = [
+            self.embedding_dim,
+            extra_in_channels,
+            extra_in_channels,
+            extra_in_channels,
+            extra_in_channels,
+        ]
+        out_channels = [
+            extra_in_channels,
+            extra_in_channels,
+            extra_in_channels,
+            extra_in_channels,
+            self.num_classes,
+        ]
+
+        modules = []
+        for i, (in_channel, out_channel) in enumerate(zip(in_channels, out_channels)):
+            modules.append(
+                nn.Conv2d(
+                in_channels=in_channel,
+                out_channels=out_channel,
+                kernel_size=1,
+                stride=1,
+                padding=self._get_padding('VALID', (1, 1)),
+                )
+            )
+            if i != 4:
+                modules.append(nn.Upsample(scale_factor=2, mode='bilinear', align_corners=False))
+        
+        self.decoder = nn.Sequential(*modules)
+
+
+    def decode(self, x, intmd_x, intmd_layers=None):
+        x = self._reshape_output_seq2img(x)
+        x = self.decoder(x)
+        return x
+
+
+
+
+class SETR_MLA(SETR):
+    def __init__(
+        self,
+        img_size,
+        patch_size,
+        num_channels,
+        num_classes,
+        embedding_dim,
+        num_heads,
+        num_layers,
+        transformer_foward_expansion,
+        dropout_rate=0.0,
+        attn_dropout_rate=0.0,
+        conv_patch_representation=False,
+        positional_encoding_type="learned",
+    ):
+        super().__init__(
+            img_size=img_size,
+            patch_size=patch_size,
+            num_channels=num_channels,
+            embedding_dim=embedding_dim,
+            num_heads=num_heads,
+            num_layers=num_layers,
+            transformer_forward_expansion=transformer_foward_expansion,
+            dropout_rate=dropout_rate,
+            attn_dropout_rate=attn_dropout_rate,
+            conv_patch_representation=conv_patch_representation,
+            positional_encoding_type=positional_encoding_type
+        )
+
+        self.num_classes = num_classes
+        self._init_decoder()
+
+    
+    def _define_agg_net(self):
+        agg_in = nn.Conv2d(
+            self.embedding_dim, self.embedding_dim // 2, 1, 1, 
+            padding=self._get_padding('VALID', (1, 1))
+        )
+        agg_intmd = nn.Conv2d(
+            self.embedding_dim // 2, self.embedding_dim // 2, 3, 1, 
+            padding=self._get_padding('SAME', (3, 3))
+        )
+        agg_out = nn.Sequential(
+            nn.Conv2d(
+                self.embedding_dim // 2, self.embedding_dim // 4, 3, 1,
+                padding=self._get_padding('SAME', (3, 3))
+            ),
+            nn.Upsample(scale_factor=4, mode='bilinear', align_corners=False)
+        )
+        return agg_in, agg_intmd, agg_out
+
+    
+    def _init_decoder(self):
+        # Multi-level feature aggregation
+        self.aggr1_in, self.aggr1_intmd, self.aggr1_out = self._define_agg_net()
+        self.aggr2_in, self.aggr2_intmd, self.aggr2_out = self._define_agg_net()
+        self.aggr3_in, self.aggr3_intmd, self.aggr3_out = self._define_agg_net()
+        self.aggr4_in, self.aggr4_intmd, self.aggr4_out = self._define_agg_net()
+
+        self.output_net = nn.Sequential(
+            nn.Conv2d(
+                in_channels=self.embedding_dim, out_channels=self.num_classes,
+                kernel_size=1, stride=1,
+                padding=self._get_padding('VALID', (1, 1))
+            ),
+            nn.Upsample(scale_factor=4, mode='bilinear', align_corners=False)
+        )
+
+
+    def decode(self, x, intmd_x, intmd_layers=None):
+        assert intmd_layers is not None, "Pass the intermediate layers for MLA"
+        assert len(intmd_layers) == 4, "Number of intermediate layers should be 4"
+        
+        temp_x = intmd_x[intmd_layers[0]]
+        temp_x = self._reshape_output_seq2img(temp_x)
+        layer1_intmd_in = self.aggr1_in(temp_x)
+        layer1_out = self.aggr1_out(layer1_intmd_in)
+
+        temp_x = intmd_x[intmd_layers[1]]
+        temp_x = self._reshape_output_seq2img(temp_x)
+        layer2_in = self.aggr2_in(temp_x)
+        layer2_intmd_in = layer2_in + layer1_intmd_in
+        layer2_intmd_out = self.aggr2_intmd(layer2_intmd_in)
+        layer2_out = self.aggr2_out(layer2_intmd_out)
+
+        temp_x = intmd_x[intmd_layers[2]]
+        temp_x = self._reshape_output_seq2img(temp_x)
+        layer3_in = self.aggr3_in(temp_x)
+        layer3_intmd_in = layer3_in + layer2_intmd_in
+        layer3_intmd_out = self.aggr3_intmd(layer3_intmd_in)
+        layer3_out = self.aggr3_out(layer3_intmd_out)
+
+        temp_x = intmd_x[intmd_layers[3]]
+        temp_x = self._reshape_output_seq2img(temp_x)
+        layer4_in = self.aggr4_in(temp_x)
+        layer4_intmd_in = layer4_in + layer3_intmd_in
+        layer4_intmd_out = self.aggr4_intmd(layer4_intmd_in)
+        layer4_out = self.aggr4_out(layer4_intmd_out)
+
+        out = torch.cat([layer1_out, layer2_out, layer3_out, layer4_out], dim=1)
+        out = self.output_net(out)
+        return out
 
 
 
@@ -256,6 +445,8 @@ if __name__ == "__main__":
     img = torch.randn((N, num_channels, img_size, img_size))
 
     model = SETR_Naive(
+    # model = SETR_PUP(
+    # model = SETR_MLA(
         img_size=img_size,
         patch_size=patch_size,
         num_channels=num_channels,
@@ -270,7 +461,7 @@ if __name__ == "__main__":
         positional_encoding_type=positional_encoding_type
     )
 
-    out = model(img)
+    out = model(img, intmd_layers=[5, 11, 17, 23])
     assert out.shape == torch.Size([N, num_classes, img_size, img_size])
     print("img shape:", img.shape)
     print("output shape:", out.shape)
