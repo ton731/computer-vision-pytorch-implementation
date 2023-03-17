@@ -10,6 +10,8 @@ from tqdm import tqdm
 from torchvision.utils import save_image
 from generator import Generator
 from discriminator import Discriminator
+# import os
+# os.environ["KMP_DUPLICATE_LIB_OK"]  =  "TRUE"
 
 
 def train_fn(disc_H, disc_Z, gen_Z, gen_H, loader, opt_disc, opt_gen, l1, mse, d_scaler, g_scaler, epoch):
@@ -62,10 +64,10 @@ def train_fn(disc_H, disc_Z, gen_Z, gen_H, loader, opt_disc, opt_gen, l1, mse, d
             cycle_horse_loss = l1(horse, cycle_horse)
 
             # identity loss (remove these for efficiency if you set lambda_identity=0)
-            identity_zebra = gen_Z(zebra)
-            identity_horse = gen_H(horse)
-            identity_zebra_loss = l1(zebra, identity_zebra)
-            identity_horse_loss = l1(horse, identity_horse)
+            # identity_zebra = gen_Z(zebra)
+            # identity_horse = gen_H(horse)
+            # identity_zebra_loss = l1(zebra, identity_zebra)
+            # identity_horse_loss = l1(horse, identity_horse)
 
             # add all together
             G_loss = (
@@ -73,8 +75,8 @@ def train_fn(disc_H, disc_Z, gen_Z, gen_H, loader, opt_disc, opt_gen, l1, mse, d
                 + loss_G_H
                 + cycle_zebra_loss * config.LAMBDA_CYCLE
                 + cycle_horse_loss * config.LAMBDA_CYCLE
-                + identity_zebra_loss * config.LAMBDA_IDENTITY
-                + identity_horse_loss * config.LAMBDA_IDENTITY
+                # + identity_zebra_loss * config.LAMBDA_IDENTITY
+                # + identity_horse_loss * config.LAMBDA_IDENTITY
             )
         
         opt_gen.zero_grad()
@@ -83,8 +85,10 @@ def train_fn(disc_H, disc_Z, gen_Z, gen_H, loader, opt_disc, opt_gen, l1, mse, d
         g_scaler.update()
 
         if idx % 200 == 0:
-            save_image(fake_horse * 0.5 + 0.5, f"saved_images/horse_epoch{epoch}_idx{idx}")
-            save_image(fake_zebra * 0.5 + 0.5, f"saved_images/zebra_epoch{epoch}_idx{idx}")
+            save_image(fake_horse * 0.5 + 0.5, f"Results/saved_images/fake_horse_epoch{epoch}_idx{idx}.png")
+            save_image(fake_zebra * 0.5 + 0.5, f"Results/saved_images/fake_zebra_epoch{epoch}_idx{idx}.png")
+        
+        loop.set_postfix(H_real=H_reals / (idx + 1), H_fake=H_fakes / (idx + 1))
 
 
 
@@ -163,6 +167,7 @@ def main():
     d_scaler = torch.cuda.amp.GradScaler()
 
     for epoch in range(config.NUM_EPOCHS):
+        print(f"Epoch: {epoch+1}/{config.NUM_EPOCHS}")
         train_fn(
             disc_H,
             disc_Z,

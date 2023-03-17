@@ -3,16 +3,17 @@ import albumentations as A
 from albumentations.pytorch import ToTensorV2
 
 DEVICE = "cuda" if torch.cuda.is_available() else "cpu"
-TRAIN_DIR = "data/train"
-VAL_DIR = "data/val"
-BATCH_SIZE = 1
+# DEVICE = "cpu"
+TRAIN_DIR = "cycle_gan_data/horse2zebra/train"
+VAL_DIR = "cycle_gan_data/horse2zebra/valid"
+BATCH_SIZE = 3
 LEARNING_RATE = 1e-5
 LAMBDA_IDENTITY = 0.0
 LAMBDA_CYCLE = 10
 NUM_WORKERS = 4
-NUM_EPOCHS = 10
+NUM_EPOCHS = 150
 LOAD_MODEL = False
-SAVE_MODEL = True
+SAVE_MODEL = False
 CHECKPOINT_GEN_H = "genh.pth.tar"
 CHECKPOINT_GEN_Z = "genz.pth.tar"
 CHECKPOINT_CRITIC_H = "critich.pth.tar"

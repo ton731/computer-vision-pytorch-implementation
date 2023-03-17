@@ -17,6 +17,11 @@ GANs/DCGAN/dataset
 # GANs/WGAN
 GANs/WGAN/dataset
 
+# GANs/CycleGAN
+GANs/CycleGAN/cycle_gan_data/
+GANs/CycleGAN/saved_images/
+GANs/CycleGAN/Results/
+
 
 
 
