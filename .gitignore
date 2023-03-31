@@ -3,7 +3,7 @@ image_captioning/flickr8k/
 image_captioning/runs/
 
 # Neural style transfer
-neural_style_transfer/output/*/*0.png
+applications/neural_style_transfer/output/*/*0.png
 
 # GANs/dataset
 GANs/dataset/
