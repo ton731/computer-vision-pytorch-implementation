@@ -5,6 +5,7 @@ import matplotlib.pyplot as plt
 from torch import optim
 from tqdm import tqdm
 import logging
+from pathlib import Path
 from torch.utils.tensorboard import SummaryWriter
 from modules import *
 from utils import *
@@ -45,6 +46,7 @@ class Diffusion:
 
     
     def sample(self, model, n):
+        n = min(n, 8)
         logging.info(f"Sampling {n} new images...")
         model.eval()
         with torch.no_grad():
@@ -63,7 +65,9 @@ class Diffusion:
         
         model.train()
         x = (x.clamp(-1, 1) + 1) / 2
-        x = (x * 255).tpye(torch.uint8)
+        x = (x * 255).to(torch.uint8)
+        # x = x * 0.5 + 0.5
+        # x = (x * 255).to(torch.uint8)
         return x
 
 
@@ -72,8 +76,9 @@ class Diffusion:
 def train(args):
     setup_logging(args.run_name)
     device = args.device
-    dataloader = get_data(args)
-    model = UNet().to(device)
+    dataset = myDataset(args.dataset_path, args)
+    dataloader = DataLoader(dataset, batch_size=args.batch_size, shuffle=True)
+    model = UNet(image_size=args.image_size).to(device)
     optimizer = optim.AdamW(model.parameters(), lr=args.lr)
     mse = nn.MSELoss()
     diffusion = Diffusion(img_size=args.image_size, device=device)
@@ -83,7 +88,7 @@ def train(args):
     for epoch in range(args.epochs):
         logging.info(f"Starting epoch {epoch}:")
         pbar = tqdm(dataloader)
-        for i, (images, _) in enumerate(pbar):
+        for i, images in enumerate(pbar):
             images = images.to(device)
             t = diffusion.sample_timesteps(images.shape[0]).to(device)
             x_t, noise = diffusion.noise_images(images, t)
@@ -99,18 +104,19 @@ def train(args):
 
         sampled_images = diffusion.sample(model, n=images.shape[0])
         save_images(sampled_images, os.path.join("results", args.run_name, f"{epoch}.jpg"))
-        torch.save(model.state_dict(), os.path.join("models", args.run_name, f"ckpt.pt"))
+        # torch.save(model.state_dict(), os.path.join("models", args.run_name, f"ckpt.pt"))
 
 
 def launch():
     import argparse
     parser = argparse.ArgumentParser()
     args = parser.parse_args()
-    args.run_name = "DDPM"
+    data_name = "photos"
+    args.run_name = f"DDPM-{data_name}"
     args.epochs = 500
-    args.batch_size = 2
+    args.batch_size = 64
     args.image_size = 64
-    args.dataset_path = "horses"
+    args.dataset_path = Path(f"data/{data_name}")
     args.device = "cuda" if torch.cuda.is_available() else "cpu"
     args.lr = 3e-4
     train(args)
