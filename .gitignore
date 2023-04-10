@@ -3,30 +3,33 @@ cv/image_captioning/flickr8k/
 cv/image_captioning/runs/
 
 
-# diffusion
-cv/diffusion/data/
-cv/diffusion/results/
-cv/diffusion/runs/
-
 # Neural style transfer
 cv/applications/neural_style_transfer/output/*/*0.png
 
+
+
+
+# diffusion
+generative/diffusion/data/
+generative/diffusion/results/
+generative/diffusion/runs/
+
 # GANs/dataset
-cv/GANs/dataset/
+generative/GANs/dataset/
 
 # GANs/SimpleGAN
-cv/GANs/SimpleGAN/dataset/
+generative/GANs/SimpleGAN/dataset/
 
 # GANs/DCGAN
-cv/GANs/DCGAN/dataset
+generative/GANs/DCGAN/dataset
 
 # GANs/WGAN
-cv/GANs/WGAN/dataset
+generative/GANs/WGAN/dataset
 
 # GANs/CycleGAN
-cv/GANs/CycleGAN/cycle_gan_data/
-cv/GANs/CycleGAN/saved_images/
-cv/GANs/CycleGAN/Results/
+generative/GANs/CycleGAN/cycle_gan_data/
+generative/GANs/CycleGAN/saved_images/
+generative/GANs/CycleGAN/Results/
 
 
 
